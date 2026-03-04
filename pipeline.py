@@ -10,7 +10,7 @@ def print_banner():
 ╔══════════════════════════════════════════════════╗
 ║       NYC TAXI ETL PIPELINE  🚕                  ║
 ║       Source : NYC TLC Yellow Taxi Records       ║
-║       Period : November 2025                     ║
+║       Period : January 2025                     ║
 ║       Built  : Python + Pandas + SQLite          ║
 ╚══════════════════════════════════════════════════╝
     """)
