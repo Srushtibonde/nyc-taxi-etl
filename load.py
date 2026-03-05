@@ -21,10 +21,13 @@ def create_tables(conn):
             vendor_id             INTEGER,
             pickup_datetime       TEXT,
             dropoff_datetime      TEXT,
+            pickup_date           TEXT,
             passenger_count       INTEGER,
             trip_distance         REAL,
             pickup_location_id    INTEGER,
             dropoff_location_id   INTEGER,
+            pickup_zone           TEXT,
+            dropoff_zone          TEXT,
             payment_type          INTEGER,
             payment_method        TEXT,
             fare_amount           REAL,
@@ -53,8 +56,8 @@ def create_tables(conn):
             status          TEXT
         );
     """)
-# Clear existing data before each load
-    # This prevents duplicate records if pipeline runs multiple times
+
+    # Clear existing data — prevents duplicates on re-run
     conn.execute("DELETE FROM fact_trips")
     conn.commit()
     print("✅ Tables ready: fact_trips, pipeline_runs")
@@ -66,8 +69,10 @@ def load_data(conn, df):
 
     load_df = df[[
         'VendorID', 'tpep_pickup_datetime', 'tpep_dropoff_datetime',
+        'pickup_date',
         'passenger_count', 'trip_distance',
         'PULocationID', 'DOLocationID',
+        'pickup_zone', 'dropoff_zone',
         'payment_type', 'payment_method',
         'fare_amount', 'tip_amount', 'tolls_amount', 'total_amount',
         'congestion_surcharge', 'Airport_fee', 'cbd_congestion_fee',
@@ -77,8 +82,10 @@ def load_data(conn, df):
 
     load_df.columns = [
         'vendor_id', 'pickup_datetime', 'dropoff_datetime',
+        'pickup_date',
         'passenger_count', 'trip_distance',
         'pickup_location_id', 'dropoff_location_id',
+        'pickup_zone', 'dropoff_zone',
         'payment_type', 'payment_method',
         'fare_amount', 'tip_amount', 'tolls_amount', 'total_amount',
         'congestion_surcharge', 'airport_fee', 'cbd_congestion_fee',
@@ -109,7 +116,6 @@ def load_data(conn, df):
 def build_insights(conn):
     print("\n--- Building business insights ---")
 
-    # Overall stats
     revenue = pd.read_sql("""
         SELECT
             COUNT(*) as total_trips,
@@ -126,7 +132,6 @@ def build_insights(conn):
     print(f"  Avg duration    : {revenue['avg_duration_mins']} mins")
     print(f"  Avg distance    : {revenue['avg_distance_miles']} miles")
 
-    # Airport vs city
     airport = pd.read_sql("""
         SELECT
             is_airport_trip,
@@ -142,7 +147,6 @@ def build_insights(conn):
         label = "Airport" if row['is_airport_trip'] == 1 else "City   "
         print(f"  {label} → {int(row['trips']):>10,} trips │ avg fare ${row['avg_fare']:.2f} │ revenue ${row['total_revenue']:,.2f}")
 
-    # Peak hours
     peak = pd.read_sql("""
         SELECT pickup_hour, COUNT(*) as trips
         FROM fact_trips
@@ -155,7 +159,6 @@ def build_insights(conn):
     for _, row in peak.iterrows():
         print(f"  {int(row['pickup_hour']):02d}:00 → {int(row['trips']):,} trips")
 
-    # Payment methods
     payments = pd.read_sql("""
         SELECT
             payment_method,
@@ -169,6 +172,20 @@ def build_insights(conn):
     print(f"\n  PAYMENT METHODS:")
     for _, row in payments.iterrows():
         print(f"  {str(row['payment_method']):<15} → {int(row['trips']):>10,} trips ({row['pct']}%)")
+
+    zones = pd.read_sql("""
+        SELECT pickup_zone, COUNT(*) as trips,
+               ROUND(SUM(total_amount), 2) as revenue
+        FROM fact_trips
+        WHERE pickup_zone != 'Unknown Zone'
+        GROUP BY pickup_zone
+        ORDER BY revenue DESC
+        LIMIT 5
+    """, conn)
+
+    print(f"\n  TOP 5 PICKUP ZONES:")
+    for _, row in zones.iterrows():
+        print(f"  {row['pickup_zone']:<35} {int(row['trips']):>7,} trips  ${row['revenue']:>12,.2f}")
 
 
 # ── FUNCTION 5: LOG THE RUN ───────────────────────────────────────
